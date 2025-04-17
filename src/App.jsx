@@ -8,7 +8,7 @@ export default function Gesture3DWhiteboard() {
     const canvasRef = useRef();
     const videoRef = useRef();
     const [is3DMode, setIs3DMode] = useState(false);
-    const [strokes3D, setStrokes3D] = useState([]);
+    // const [strokes3D, setStrokes3D] = useState([]);
     const sceneRef = useRef(new THREE.Scene());
     const rendererRef = useRef();
     const camera3DRef = useRef();

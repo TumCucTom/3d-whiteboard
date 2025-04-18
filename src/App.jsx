@@ -19,8 +19,7 @@ export default function Gesture3DWhiteboard() {
     // Raycaster & drawing plane
     const raycasterRef = useRef(new THREE.Raycaster());
     const drawPlane = useRef(new THREE.Plane(new THREE.Vector3(0, 0, 1), 0));
-
-    const lineMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 3 });
+    const lineMaterial = useRef(new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 15 }));
 
     // Scale scene to fit viewport
     const updateScale = () => {
@@ -81,16 +80,16 @@ export default function Gesture3DWhiteboard() {
             }
             overlayCtx.restore();
 
-            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+            if (results.multiHandLandmarks?.length) {
                 const lm = results.multiHandLandmarks[0];
                 const tip = lm[8], thumb = lm[4];
                 const dist = Math.hypot(tip.x - thumb.x, tip.y - thumb.y);
-                const pinching = dist < 0.03;
+                const pinching = dist < 0.06;
                 if (pinching && !is3DMode) setIs3DMode(true);
                 if (!pinching && is3DMode) setIs3DMode(false);
 
                 if (!pinching) {
-                    // DRAWING: project tip onto rotated plane and clamp to screen span
+                    // DRAWING: project tip onto rotated plane
                     const camera = camera3DRef.current;
                     const planeDist = camera.position.z;
                     const heightPlane = 2 * planeDist * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
@@ -98,26 +97,55 @@ export default function Gesture3DWhiteboard() {
                     const halfWidth = widthPlane / 2;
                     const halfHeight = heightPlane / 2;
 
-                    const ndc = new THREE.Vector2(
-                        tip.x * 2 - 1,
-                        tip.y * -2 + 1
-                    );
-                    const raycaster = raycasterRef.current;
-                    raycaster.setFromCamera(ndc, camera);
+                    // Ray from camera through normalized screen point
+                    const ndc = new THREE.Vector2(tip.x * 2 - 1, tip.y * -2 + 1);
+                    const ray = raycasterRef.current;
+                    ray.setFromCamera(ndc, camera);
 
-                    const intersectPoint = new THREE.Vector3();
-                    raycaster.ray.intersectPlane(drawPlane.current, intersectPoint);
+                    const OI = new THREE.Vector3();
+                    ray.ray.intersectPlane(drawPlane.current, OI);
 
-                    // clamp to drawing bounds
-                    intersectPoint.x = THREE.MathUtils.clamp(intersectPoint.x, -halfWidth, halfWidth);
-                    intersectPoint.y = THREE.MathUtils.clamp(intersectPoint.y, -halfHeight, halfHeight);
+                    if (pointer.current) {
+                        // check if next point is outside allowed rect
+                        const last = pointer.current[pointer.current.length - 1];
+                        if (
+                            OI.x < -halfWidth || OI.x > halfWidth ||
+                            OI.y < -halfHeight || OI.y > halfHeight
+                        ) {
+                            // find intersection t
+                            const dx = OI.x - last.x;
+                            const dy = OI.y - last.y;
+                            const tCandidates = [];
+                            if (dx !== 0) {
+                                if (OI.x < -halfWidth || OI.x > halfWidth) {
+                                    const xB = OI.x > halfWidth ? halfWidth : -halfWidth;
+                                    tCandidates.push((xB - last.x) / dx);
+                                }
+                            }
+                            if (dy !== 0) {
+                                if (OI.y < -halfHeight || OI.y > halfHeight) {
+                                    const yB = OI.y > halfHeight ? halfHeight : -halfHeight;
+                                    tCandidates.push((yB - last.y) / dy);
+                                }
+                            }
+                            const t = Math.min(...tCandidates.filter(t => t >= 0 && t <= 1));
+                            const cutPoint = last.clone().add(new THREE.Vector3(dx, dy, 0).multiplyScalar(t));
 
-                    if (!pointer.current) pointer.current = [intersectPoint.clone()];
-                    else pointer.current.push(intersectPoint.clone());
+                            // finish line at cutPoint
+                            pointer.current.push(cutPoint);
+                            const geoEnd = new THREE.BufferGeometry().setFromPoints(pointer.current);
+                            sceneRef.current.add(new THREE.Line(geoEnd, lineMaterial.current));
+                            pointer.current = null;
+                            return;
+                        }
+                    }
+
+                    // normal case, within bounds
+                    if (!pointer.current) pointer.current = [OI.clone()];
+                    else pointer.current.push(OI.clone());
 
                     const geo = new THREE.BufferGeometry().setFromPoints(pointer.current);
-                    const line = new THREE.Line(geo, lineMaterial);
-                    sceneRef.current.add(line);
+                    sceneRef.current.add(new THREE.Line(geo, lineMaterial.current));
                     updateScale();
                 } else {
                     // ROTATION ON PINCH
@@ -126,8 +154,7 @@ export default function Gesture3DWhiteboard() {
                         const dy = tip.y - prevTip.current.y;
                         sceneRef.current.rotation.y += dx * Math.PI;
                         sceneRef.current.rotation.x += dy * Math.PI;
-
-                        // update plane normal to match new scene orientation
+                        // update plane
                         drawPlane.current.normal.set(0, 0, 1)
                             .applyQuaternion(sceneRef.current.quaternion)
                             .normalize();

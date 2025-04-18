@@ -8,7 +8,7 @@ export default function Gesture3DWhiteboard() {
     const canvasRef = useRef();
     const videoRef = useRef();
     const [is3DMode, setIs3DMode] = useState(false);
-    // const [strokes3D, setStrokes3D] = useState([]);
+    const [showWebcam, setShowWebcam] = useState(false);
     const sceneRef = useRef(new THREE.Scene());
     const rendererRef = useRef();
     const camera3DRef = useRef();
@@ -19,8 +19,9 @@ export default function Gesture3DWhiteboard() {
         // Setup three.js scene
         const width = window.innerWidth;
         const height = window.innerHeight;
-        const renderer = new THREE.WebGLRenderer({ canvas: canvasRef.current });
+        const renderer = new THREE.WebGLRenderer({ canvas: canvasRef.current, alpha: true });
         renderer.setSize(width, height);
+        renderer.setClearColor(0xffffff, 1); // Default white background
         rendererRef.current = renderer;
 
         const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
@@ -95,9 +96,26 @@ export default function Gesture3DWhiteboard() {
     };
 
     return (
-        <div>
-            <video ref={videoRef} style={{ display: "none" }} width="640" height="480" />
-            <canvas ref={canvasRef} />
+        <div style={{ position: "relative", width: "100vw", height: "100vh", overflow: "hidden" }}>
+            <video
+                ref={videoRef}
+                style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    display: showWebcam ? "block" : "none",
+                    zIndex: 0
+                }}
+                width="640"
+                height="480"
+                autoPlay
+                muted
+                playsInline
+            />
+            <canvas ref={canvasRef} style={{ position: "absolute", top: 0, left: 0, zIndex: 1 }} />
             <div
                 style={{
                     position: "absolute",
@@ -107,10 +125,28 @@ export default function Gesture3DWhiteboard() {
                     background: is3DMode ? "limegreen" : "gray",
                     color: "white",
                     borderRadius: "8px",
+                    zIndex: 2
                 }}
             >
                 {is3DMode ? "3D Mode" : "2D Mode (gesture to switch)"}
             </div>
+            <button
+                onClick={() => setShowWebcam(!showWebcam)}
+                style={{
+                    position: "absolute",
+                    top: 70,
+                    left: 20,
+                    padding: "10px 20px",
+                    background: showWebcam ? "darkred" : "steelblue",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "8px",
+                    cursor: "pointer",
+                    zIndex: 2
+                }}
+            >
+                {showWebcam ? "Hide Webcam" : "Show Webcam"}
+            </button>
         </div>
     );
 }

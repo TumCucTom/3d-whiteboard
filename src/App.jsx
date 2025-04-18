@@ -15,7 +15,8 @@ export default function Gesture3DWhiteboard() {
     const rendererRef = useRef();
     const camera3DRef = useRef();
     const pointer = useRef(null);
-    const lineMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00 });
+    // Increase linewidth; note: many platforms ignore linewidth in WebGL, but we'll set it anyway
+    const lineMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 3 });
 
     useEffect(() => {
         // Setup three.js scene with transparent background
@@ -56,18 +57,28 @@ export default function Gesture3DWhiteboard() {
 
         hands.onResults((results) => {
             // Clear and draw video/frame on overlay
+            overlayCtx.save();
+            overlayCtx.scale(-1, 1);
+            overlayCtx.translate(-overlayCanvas.width, 0);
             overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
             if (showWebcam) {
                 overlayCtx.drawImage(videoRef.current, 0, 0, overlayCanvas.width, overlayCanvas.height);
             }
-            // Draw Mediapipe landmarks
+            overlayCtx.restore();
+
+            // Draw Mediapipe landmarks mirrored
+            overlayCtx.save();
+            overlayCtx.scale(-1, 1);
+            overlayCtx.translate(-overlayCanvas.width, 0);
             if (results.multiHandLandmarks) {
                 for (const landmarks of results.multiHandLandmarks) {
-                    drawConnectors(overlayCtx, landmarks, Hands.HAND_CONNECTIONS, { lineWidth: 2, color: "white" });
-                    drawLandmarks(overlayCtx, landmarks, { radius: 5, color: "red" });
+                    drawConnectors(overlayCtx, landmarks, Hands.HAND_CONNECTIONS, { lineWidth: 6, color: "white" });
+                    drawLandmarks(overlayCtx, landmarks, { radius: 15, color: "red" });
                 }
             }
-            // Gesture & drawing logic
+            overlayCtx.restore();
+
+            // Gesture & drawing logic remains unchanged
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 const lm = results.multiHandLandmarks[0];
                 const i = lm[8], t = lm[4];
@@ -76,7 +87,8 @@ export default function Gesture3DWhiteboard() {
                 if (pinching && !is3DMode) setIs3DMode(true);
                 if (!pinching && is3DMode) setIs3DMode(false);
                 if (pinching) {
-                    const x = (i.x - 0.5) * 10;
+                    // mirror x-axis for drawing
+                    const x = -((i.x - 0.5) * 10);
                     const y = -(i.y - 0.5) * 10;
                     const z = (dist - 0.015) * 100;
                     const pt = new THREE.Vector3(x, y, z);
@@ -105,18 +117,35 @@ export default function Gesture3DWhiteboard() {
                 style={{
                     position: "absolute", top: 0, left: 0,
                     width: "100%", height: "100%", objectFit: "cover",
-                    display: showWebcam ? "block" : "none", zIndex: 0
+                    display: showWebcam ? "block" : "none", zIndex: 0,
+                    transform: "scaleX(-1)"
                 }}
                 autoPlay muted playsInline
             />
-            <canvas ref={overlayRef} style={{ position: "absolute", top: 0, left: 0, zIndex: 1, pointerEvents: "none" }} />
-            <canvas ref={canvasRef} style={{ position: "absolute", top: 0, left: 0, zIndex: 2 }} />
-            <div style={{ position: "absolute", top: 20, left: 20, padding: "10px 20px", background: is3DMode ? "limegreen" : "gray", color: "white", borderRadius: "8px", zIndex: 3 }}>
+            <canvas
+                ref={overlayRef}
+                style={{ position: "absolute", top: 0, left: 0, zIndex: 1, pointerEvents: "none" }}
+            />
+            <canvas
+                ref={canvasRef}
+                style={{ position: "absolute", top: 0, left: 0, zIndex: 2, transform: "scaleX(-1)" }}
+            />
+            <div
+                style={{
+                    position: "absolute", top: 20, left: 20, padding: "10px 20px",
+                    background: is3DMode ? "limegreen" : "gray", color: "white",
+                    borderRadius: "8px", zIndex: 3
+                }}
+            >
                 {is3DMode ? "3D Mode" : "2D Mode (gesture to switch)"}
             </div>
             <button
                 onClick={() => setShowWebcam(v => !v)}
-                style={{ position: "absolute", top: 70, left: 20, padding: "10px 20px", background: showWebcam ? "darkred" : "steelblue", color: "white", border: "none", borderRadius: "8px", cursor: "pointer", zIndex: 3 }}
+                style={{
+                    position: "absolute", top: 70, left: 20, padding: "10px 20px",
+                    background: showWebcam ? "darkred" : "steelblue", color: "white",
+                    border: "none", borderRadius: "8px", cursor: "pointer", zIndex: 3
+                }}
             >
                 {showWebcam ? "Hide Webcam" : "Show Webcam"}
             </button>

@@ -88,7 +88,7 @@ export default function Gesture3DWhiteboard() {
                 if (!pinching && is3DMode) setIs3DMode(false);
                 if (pinching) {
                     // mirror x-axis for drawing
-                    const x = -((i.x - 0.5) * 10);
+                    const x = (i.x - 0.5) * 10;  // no manual inversion; rely on CSS mirroring for alignment
                     const y = -(i.y - 0.5) * 10;
                     const z = (dist - 0.015) * 100;
                     const pt = new THREE.Vector3(x, y, z);

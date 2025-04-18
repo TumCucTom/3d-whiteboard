@@ -3,9 +3,11 @@ import React, { useRef, useEffect, useState } from "react";
 import * as THREE from "three";
 import { Hands } from "@mediapipe/hands";
 import { Camera } from "@mediapipe/camera_utils";
+import { drawConnectors, drawLandmarks } from "@mediapipe/drawing_utils";
 
 export default function Gesture3DWhiteboard() {
     const canvasRef = useRef();
+    const overlayRef = useRef();           // Canvas for drawing landmarks
     const videoRef = useRef();
     const [is3DMode, setIs3DMode] = useState(false);
     const [showWebcam, setShowWebcam] = useState(false);
@@ -16,12 +18,12 @@ export default function Gesture3DWhiteboard() {
     const lineMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00 });
 
     useEffect(() => {
-        // Setup three.js scene
+        // Setup three.js scene with transparent background
         const width = window.innerWidth;
         const height = window.innerHeight;
         const renderer = new THREE.WebGLRenderer({ canvas: canvasRef.current, alpha: true });
         renderer.setSize(width, height);
-        renderer.setClearColor(0xffffff, 1); // Default white background
+        renderer.setClearColor(0xffffff, 0);  // transparent background
         rendererRef.current = renderer;
 
         const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
@@ -36,10 +38,15 @@ export default function Gesture3DWhiteboard() {
     }, []);
 
     useEffect(() => {
+        // Prepare overlay canvas
+        const overlayCanvas = overlayRef.current;
+        const overlayCtx = overlayCanvas.getContext("2d");
+        overlayCanvas.width = window.innerWidth;
+        overlayCanvas.height = window.innerHeight;
+
         const hands = new Hands({
             locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
         });
-
         hands.setOptions({
             maxNumHands: 1,
             modelComplexity: 1,
@@ -47,103 +54,69 @@ export default function Gesture3DWhiteboard() {
             minTrackingConfidence: 0.8,
         });
 
-        hands.onResults(onResults);
+        hands.onResults((results) => {
+            // Clear and draw video/frame on overlay
+            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+            if (showWebcam) {
+                overlayCtx.drawImage(videoRef.current, 0, 0, overlayCanvas.width, overlayCanvas.height);
+            }
+            // Draw Mediapipe landmarks
+            if (results.multiHandLandmarks) {
+                for (const landmarks of results.multiHandLandmarks) {
+                    drawConnectors(overlayCtx, landmarks, Hands.HAND_CONNECTIONS, { lineWidth: 2, color: "white" });
+                    drawLandmarks(overlayCtx, landmarks, { radius: 5, color: "red" });
+                }
+            }
+            // Gesture & drawing logic
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const lm = results.multiHandLandmarks[0];
+                const i = lm[8], t = lm[4];
+                const dist = Math.hypot(i.x - t.x, i.y - t.y);
+                const pinching = dist < 0.03;
+                if (pinching && !is3DMode) setIs3DMode(true);
+                if (!pinching && is3DMode) setIs3DMode(false);
+                if (pinching) {
+                    const x = (i.x - 0.5) * 10;
+                    const y = -(i.y - 0.5) * 10;
+                    const z = (dist - 0.015) * 100;
+                    const pt = new THREE.Vector3(x, y, z);
+                    if (!pointer.current) pointer.current = [pt]; else pointer.current.push(pt);
+                    const geo = new THREE.BufferGeometry().setFromPoints(pointer.current);
+                    sceneRef.current.add(new THREE.Line(geo, lineMaterial));
+                } else {
+                    pointer.current = null;
+                }
+            }
+        });
 
         if (videoRef.current) {
-            const camera = new Camera(videoRef.current, {
-                onFrame: async () => await hands.send({ image: videoRef.current }),
-                width: 640,
-                height: 480,
+            const cam = new Camera(videoRef.current, {
+                onFrame: async () => { await hands.send({ image: videoRef.current }); },
+                width: 640, height: 480,
             });
-            camera.start();
+            cam.start();
         }
-    }, []);
-
-    const onResults = (results) => {
-        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-            const landmarks = results.multiHandLandmarks[0];
-            const indexTip = landmarks[8];
-            const thumbTip = landmarks[4];
-
-            const pinchDistance = Math.sqrt(
-                Math.pow(indexTip.x - thumbTip.x, 2) +
-                Math.pow(indexTip.y - thumbTip.y, 2)
-            );
-
-            const isPinching = pinchDistance < 0.03;
-            if (isPinching && !is3DMode) setIs3DMode(true);
-            if (!isPinching && is3DMode) setIs3DMode(false);
-
-            if (is3DMode) {
-                const x = (indexTip.x - 0.5) * 10;
-                const y = -(indexTip.y - 0.5) * 10;
-                const z = (pinchDistance - 0.015) * 100;
-
-                const newPoint = new THREE.Vector3(x, y, z);
-                if (!pointer.current) {
-                    pointer.current = [newPoint];
-                } else {
-                    pointer.current.push(newPoint);
-                }
-
-                const geometry = new THREE.BufferGeometry().setFromPoints(pointer.current);
-                const line = new THREE.Line(geometry, lineMaterial);
-                sceneRef.current.add(line);
-            } else {
-                pointer.current = null;
-            }
-        }
-    };
+    }, [showWebcam, is3DMode]);
 
     return (
         <div style={{ position: "relative", width: "100vw", height: "100vh", overflow: "hidden" }}>
             <video
                 ref={videoRef}
                 style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                    display: showWebcam ? "block" : "none",
-                    zIndex: 0
+                    position: "absolute", top: 0, left: 0,
+                    width: "100%", height: "100%", objectFit: "cover",
+                    display: showWebcam ? "block" : "none", zIndex: 0
                 }}
-                width="640"
-                height="480"
-                autoPlay
-                muted
-                playsInline
+                autoPlay muted playsInline
             />
-            <canvas ref={canvasRef} style={{ position: "absolute", top: 0, left: 0, zIndex: 1 }} />
-            <div
-                style={{
-                    position: "absolute",
-                    top: 20,
-                    left: 20,
-                    padding: "10px 20px",
-                    background: is3DMode ? "limegreen" : "gray",
-                    color: "white",
-                    borderRadius: "8px",
-                    zIndex: 2
-                }}
-            >
+            <canvas ref={overlayRef} style={{ position: "absolute", top: 0, left: 0, zIndex: 1, pointerEvents: "none" }} />
+            <canvas ref={canvasRef} style={{ position: "absolute", top: 0, left: 0, zIndex: 2 }} />
+            <div style={{ position: "absolute", top: 20, left: 20, padding: "10px 20px", background: is3DMode ? "limegreen" : "gray", color: "white", borderRadius: "8px", zIndex: 3 }}>
                 {is3DMode ? "3D Mode" : "2D Mode (gesture to switch)"}
             </div>
             <button
-                onClick={() => setShowWebcam(!showWebcam)}
-                style={{
-                    position: "absolute",
-                    top: 70,
-                    left: 20,
-                    padding: "10px 20px",
-                    background: showWebcam ? "darkred" : "steelblue",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "8px",
-                    cursor: "pointer",
-                    zIndex: 2
-                }}
+                onClick={() => setShowWebcam(v => !v)}
+                style={{ position: "absolute", top: 70, left: 20, padding: "10px 20px", background: showWebcam ? "darkred" : "steelblue", color: "white", border: "none", borderRadius: "8px", cursor: "pointer", zIndex: 3 }}
             >
                 {showWebcam ? "Hide Webcam" : "Show Webcam"}
             </button>

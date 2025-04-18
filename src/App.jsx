@@ -2,6 +2,7 @@
 import React, { useRef, useEffect, useState } from "react";
 import * as THREE from "three";
 import { Hands } from "@mediapipe/hands";
+import { HAND_CONNECTIONS } from "@mediapipe/hands";
 import { Camera } from "@mediapipe/camera_utils";
 import { drawConnectors, drawLandmarks } from "@mediapipe/drawing_utils";
 
@@ -16,7 +17,7 @@ export default function Gesture3DWhiteboard() {
     const camera3DRef = useRef();
     const pointer = useRef(null);
     // Increase linewidth; note: many platforms ignore linewidth in WebGL, but we'll set it anyway
-    const lineMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 10 });
+    const lineMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 3 });
 
     useEffect(() => {
         // Setup three.js scene with transparent background
@@ -72,7 +73,7 @@ export default function Gesture3DWhiteboard() {
             overlayCtx.translate(-overlayCanvas.width, 0);
             if (results.multiHandLandmarks) {
                 for (const landmarks of results.multiHandLandmarks) {
-                    drawConnectors(overlayCtx, landmarks, Hands.HAND_CONNECTIONS, { lineWidth: 3, color: "black" });
+                    drawConnectors(overlayCtx, landmarks, HAND_CONNECTIONS, { lineWidth: 6, color: "black" });
                     drawLandmarks(overlayCtx, landmarks, { radius: 5, color: "red" });
                 }
             }
